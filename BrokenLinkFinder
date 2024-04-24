@@ -3,14 +3,15 @@ import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
+import pandas as pd
 
 SITE = 'https://www.website.com/'
-visited = []
 
 class LinkChecker:
     def __init__(self, site):
         self.site = site
-        self.visited = []
+        self.visited = set()  # Changed to set for faster lookup
+        self.broken_links = []
 
     def get_html(self, url):
         session = requests.Session()
@@ -28,24 +29,18 @@ class LinkChecker:
             response = session.get(url, timeout=20)  # Increased timeout
             response.raise_for_status()  # Will raise an HTTPError for bad responses
             return response.text
-        except requests.exceptions.HTTPError as e:
-            print(f"HTTP error occurred for {url}: {e}")
-        except requests.exceptions.ConnectionError as e:
-            print(f"Connection error occurred for {url}: {e}")
-        except requests.exceptions.Timeout as e:
-            print(f"Timeout occurred for {url}: {e}")
         except requests.exceptions.RequestException as e:
-            print(f"Request exception occurred for {url}: {e}")
-        return None
+            print(f"Error occurred for {url}: {e}")
+            self.broken_links.append({'url': url, 'error': str(e)})
+            return None
 
     def find_broken_links(self, url, parent=None):
         if url in self.visited:
             return
-        self.visited.append(url)
+        self.visited.add(url)
         print('Checking URL:', url)
         html = self.get_html(url)
         if html is None:
-            print(f"Could not retrieve {url}")
             return
 
         soup = BeautifulSoup(html, 'html.parser')
@@ -58,6 +53,11 @@ class LinkChecker:
             if full_url.startswith(self.site) and full_url not in self.visited:
                 self.find_broken_links(full_url, url)
 
+    def save_broken_links_to_excel(self):
+        df = pd.DataFrame(self.broken_links)
+        df.to_excel('broken_links.xlsx', index=False)
+
 if __name__ == '__main__':
     checker = LinkChecker(SITE)
     checker.find_broken_links(SITE)
+    checker.save_broken_links_to_excel()
